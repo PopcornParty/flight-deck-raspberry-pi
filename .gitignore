@@ -1,0 +1,9 @@
+config.json
+*.db
+*.sqlite
+__pycache__/
+*.pyc
+.env
+logs/
+*.log
+.DS_Store
