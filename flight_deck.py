@@ -66,6 +66,13 @@ def load_config():
             config[k] = v
     return config
 
+def save_config(config):
+    try:
+        with open(CONFIG_PATH, 'w') as f:
+            json.dump(config, f, indent=2)
+    except Exception as e:
+        print("Failed to save config: {}".format(e))
+
 CONFIG = load_config()
 
 def init_db():
@@ -109,14 +116,19 @@ init_db()
 def db_query(query, params=(), fetch=True):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute(query, params)
-    if fetch:
-        result = c.fetchall()
-    else:
-        result = c.lastrowid
-    conn.commit()
-    conn.close()
-    return result
+    try:
+        c.execute(query, params)
+        if fetch:
+            result = c.fetchall()
+        else:
+            result = c.lastrowid
+        conn.commit()
+        return result
+    except Exception as e:
+        print("DB error: {}".format(e))
+        return [] if fetch else None
+    finally:
+        conn.close()
 
 def http_get(url, timeout=10):
     try:
@@ -196,7 +208,7 @@ def get_weather():
     lon = CONFIG.get('weather_longitude')
     loc = CONFIG.get('weather_location', 'London')
     if lat is None or lon is None:
-        # Geocode
+        # Geocode and persist
         geo_url = 'https://geocoding-api.open-meteo.com/v1/search?name={}&count=1'.format(urllib.parse.quote(loc))
         geo = http_get(geo_url)
         if geo and 'results' in geo and geo['results']:
@@ -204,6 +216,7 @@ def get_weather():
             lon = geo['results'][0]['longitude']
             CONFIG['weather_latitude'] = lat
             CONFIG['weather_longitude'] = lon
+            save_config(CONFIG)
         else:
             return {"error": "Could not geocode location"}
     params = urllib.parse.urlencode({
@@ -233,7 +246,6 @@ def get_system_stats():
             if parts[0] == 'cpu':
                 idle = int(parts[4])
                 total = sum(int(x) for x in parts[1:])
-                # Simple previous for rate (store in memory)
                 if not hasattr(get_system_stats, 'prev'):
                     get_system_stats.prev = (idle, total)
                     stats['cpu'] = 0.0
@@ -241,16 +253,22 @@ def get_system_stats():
                     prev_idle, prev_total = get_system_stats.prev
                     d_idle = idle - prev_idle
                     d_total = total - prev_total
-                    stats['cpu'] = round(100.0 * (1.0 - d_idle / d_total) if d_total else 0, 1)
+                    if d_total > 0:
+                        stats['cpu'] = round(100.0 * (1.0 - float(d_idle) / d_total), 1)
+                    else:
+                        stats['cpu'] = 0.0
                     get_system_stats.prev = (idle, total)
-    except:
+    except Exception:
         stats['cpu'] = None
-    # Temp
+    # Temp (safe subprocess)
     try:
-        out = subprocess.check_output(['vcgencmd', 'measure_temp'], stderr=subprocess.DEVNULL, timeout=2)
-        temp = float(out.decode().split('=')[1].split("'")[0])
-        stats['temp'] = temp
-    except:
+        out = subprocess.check_output(['vcgencmd', 'measure_temp'], stderr=subprocess.STDOUT, timeout=2)
+        temp_str = out.decode().strip()
+        if 'temp=' in temp_str:
+            stats['temp'] = float(temp_str.split('=')[1].replace("'", '').replace('C', ''))
+        else:
+            stats['temp'] = None
+    except Exception:
         stats['temp'] = None
     # RAM
     try:
@@ -258,14 +276,14 @@ def get_system_stats():
             mem = {}
             for line in f:
                 if ':' in line:
-                    k, v = line.split(':')
+                    k, v = line.split(':', 1)
                     mem[k.strip()] = int(v.split()[0])
             total = mem.get('MemTotal', 0)
             free = mem.get('MemAvailable', mem.get('MemFree', 0))
             stats['ram_total'] = total // 1024
             stats['ram_used'] = (total - free) // 1024
             stats['ram_percent'] = round(100.0 * (total - free) / total, 1) if total else 0
-    except:
+    except Exception:
         stats['ram_total'] = stats['ram_used'] = stats['ram_percent'] = None
     # Disk
     try:
@@ -274,26 +292,27 @@ def get_system_stats():
         free = st.f_bavail * st.f_frsize
         stats['disk_total'] = total // (1024*1024)
         stats['disk_free'] = free // (1024*1024)
-        stats['disk_percent'] = round(100.0 * (1 - free/total), 1) if total else 0
-    except:
+        stats['disk_percent'] = round(100.0 * (1 - float(free)/total), 1) if total else 0
+    except Exception:
         stats['disk_total'] = stats['disk_free'] = stats['disk_percent'] = None
     # Uptime
     try:
         with open('/proc/uptime', 'r') as f:
             stats['uptime'] = float(f.read().split()[0])
-    except:
+    except Exception:
         stats['uptime'] = None
-    # Network (simple)
+    # Network (simple cumulative)
     stats['net_rx'] = stats['net_tx'] = None
     try:
         with open('/proc/net/dev', 'r') as f:
             for line in f:
-                if 'eth0' in line or 'wlan0' in line:
+                if 'eth0' in line or 'wlan0' in line or 'enp' in line:
                     parts = line.split()
-                    stats['net_rx'] = int(parts[1])
-                    stats['net_tx'] = int(parts[9])
+                    if len(parts) > 9:
+                        stats['net_rx'] = int(parts[1])
+                        stats['net_tx'] = int(parts[9])
                     break
-    except:
+    except Exception:
         pass
     # Warnings
     alerts = []
@@ -322,7 +341,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(CONFIG)
         elif self.path == '/api/youtube':
             stats = get_youtube_stats()
-            if 'uploads' in stats:
+            if 'uploads' in stats and not stats.get('error'):
                 stats['recent'] = get_recent_videos(stats['uploads'])
             self.send_json(stats)
         elif self.path == '/api/weather':
@@ -349,7 +368,7 @@ class Handler(BaseHTTPRequestHandler):
         body = self.rfile.read(length).decode('utf-8') if length else '{}'
         try:
             data = json.loads(body)
-        except:
+        except Exception:
             data = {}
         if self.path == '/api/tasks':
             text = data.get('text', '').strip()
