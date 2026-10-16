@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FLIGHT DECK</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<canvas id="bg"></canvas>
+<div id="app">
+  <header>
+    <div class="logo">FLIGHT DECK</div>
+    <div id="clock"></div>
+    <button id="settings-btn">⚙</button>
+    <button id="fs-btn">⛶</button>
+  </header>
+  <main id="dashboard">
+    <section id="youtube-panel" class="panel">
+      <h2>CHANNEL</h2>
+      <div id="yt-content">Loading...</div>
+    </section>
+    <section id="weather-panel" class="panel">
+      <h2>WEATHER</h2>
+      <div id="weather-content">Loading...</div>
+    </section>
+    <section id="system-panel" class="panel">
+      <h2>SYSTEM</h2>
+      <div id="system-content">Loading...</div>
+    </section>
+    <section id="tasks-panel" class="panel">
+      <h2>TASKS</h2>
+      <div id="tasks-list"></div>
+      <input id="task-input" placeholder="Add task..." />
+    </section>
+    <section id="notes-panel" class="panel">
+      <h2>NOTES</h2>
+      <div id="notes-list"></div>
+      <textarea id="note-input" placeholder="New note..."></textarea>
+      <button id="save-note">Save</button>
+    </section>
+  </main>
+  <div id="settings" class="hidden">
+    <h2>SETTINGS</h2>
+    <label>Animation <input type="checkbox" id="anim-toggle" checked></label>
+    <button id="close-settings">Close</button>
+  </div>
+</div>
+<script src="/static/app.js"></script>
+</body>
+</html>
