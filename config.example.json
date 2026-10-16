@@ -1,0 +1,27 @@
+{
+  "port": 8080,
+  "youtube_api_key": "YOUR_YOUTUBE_API_KEY_HERE",
+  "youtube_channel": "@examplechannel",
+  "weather_location": "London",
+  "weather_latitude": null,
+  "weather_longitude": null,
+  "timezone": "Europe/London",
+  "second_timezone": null,
+  "event_countdown": null,
+  "subscriber_milestones": [1000, 5000, 10000, 50000, 100000],
+  "accent_color": "#4fc3f7",
+  "animation_enabled": true,
+  "animation_intensity": 1.0,
+  "refresh_interval_youtube": 300,
+  "refresh_interval_weather": 600,
+  "refresh_interval_system": 5,
+  "widgets": {
+    "youtube": true,
+    "clock": true,
+    "weather": true,
+    "system": true,
+    "tasks": true,
+    "notes": true,
+    "timer": true
+  }
+}
